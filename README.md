@@ -1,0 +1,245 @@
+# E-Commerce Order API — Spring Boot Learning Project
+
+A production-style REST API for an online shop: user registration/login with **JWT**,
+**role-based** product management, and order placement with stock control.
+Built to teach the core Spring Boot skills interviewers ask about.
+
+**Stack:** Java 21 · Spring Boot 3.3.5 · Spring Security · Spring Data JPA · H2 · JWT (jjwt) · springdoc OpenAPI · JUnit 5 + Mockito
+
+---
+
+## 1. How to run
+
+```powershell
+# From the project root
+$env:JAVA_HOME = 'C:\Program Files\Eclipse_DEV\Jdks\jdk21'
+mvn spring-boot:run
+```
+
+- API base URL: `http://localhost:8080`
+- Swagger UI: `http://localhost:8080/swagger-ui.html`
+- H2 console: `http://localhost:8080/h2-console` (JDBC URL `jdbc:h2:mem:ecommerce`, user `sa`, no password)
+
+### Run the tests
+
+```powershell
+mvn clean test
+```
+
+### Seeded demo accounts (dev only)
+
+| Username | Password  | Role  |
+|----------|-----------|-------|
+| `admin`  | `admin123`| ADMIN |
+| `john`   | `john123` | USER  |
+
+---
+
+## 2. Architecture
+
+A classic **layered (n-tier) architecture**. Each layer has one responsibility and
+only talks to the layer directly below it.
+
+```
+HTTP request
+   │
+   ▼
+┌─────────────────┐   Controllers      -> REST endpoints, validation, HTTP status
+│  Controller     │   (@RestController)
+└────────┬────────┘
+         ▼
+┌─────────────────┐   Services         -> business logic, transactions
+│  Service        │   (@Service)
+└────────┬────────┘
+         ▼
+┌─────────────────┐   Repositories     -> data access (Spring Data JPA)
+│  Repository     │   (JpaRepository)
+└────────┬────────┘
+         ▼
+┌─────────────────┐   Entities         -> mapped to DB tables (Hibernate)
+│  Database (H2)  │
+└─────────────────┘
+
+Cross-cutting:
+  • Security  : JwtAuthFilter -> SecurityContext -> @PreAuthorize
+  • DTOs      : request/response objects (never expose entities directly)
+  • Exceptions: @RestControllerAdvice -> consistent JSON errors
+```
+
+**Request flow for a protected call:**
+`Client → JwtAuthFilter (validates token, sets SecurityContext) → Controller (@Valid) → Service (@Transactional) → Repository → DB`, then the response DTO is serialized back to JSON.
+
+### Package layout
+
+```
+com.learn.ecommerce
+├── config/       SecurityConfig, OpenApiConfig, DataSeeder
+├── controller/   AuthController, ProductController, OrderController
+├── service/      AuthService, ProductService, OrderService
+├── repository/   UserRepository, ProductRepository, OrderRepository
+├── entity/       User, Product, Order, OrderItem, Role, OrderStatus
+├── dto/          request/  +  response/   (records)
+├── security/     JwtService, JwtAuthFilter, CustomUserDetailsService
+└── exception/    GlobalExceptionHandler, custom exceptions, ErrorResponse
+```
+
+---
+
+## 3. Endpoints
+
+Base path: `/api/v1`
+
+### Auth (public)
+
+| Method | Endpoint          | Body              | Description               |
+|--------|-------------------|-------------------|---------------------------|
+| POST   | `/auth/register`  | RegisterRequest   | Create user, returns JWT  |
+| POST   | `/auth/login`     | LoginRequest      | Authenticate, returns JWT |
+
+### Products
+
+| Method | Endpoint          | Access | Description               |
+|--------|-------------------|--------|---------------------------|
+| GET    | `/products`       | Public | List products (paginated) |
+| GET    | `/products/{id}`  | Public | Get one product           |
+| POST   | `/products`       | ADMIN  | Create product            |
+| PUT    | `/products/{id}`  | ADMIN  | Update product            |
+| DELETE | `/products/{id}`  | ADMIN  | Delete product            |
+
+### Orders (authenticated)
+
+| Method | Endpoint                 | Access | Description               |
+|--------|--------------------------|--------|---------------------------|
+| POST   | `/orders`                | USER   | Place an order            |
+| GET    | `/orders`                | USER   | List my orders            |
+| GET    | `/orders/{id}`           | USER   | Get one of my orders      |
+| PATCH  | `/orders/{id}/status`    | ADMIN  | Update order status       |
+
+### Quick cURL walkthrough
+
+```bash
+# 1. Login as admin
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
+# -> copy the "token" from the response
+
+# 2. Create a product (ADMIN only)
+curl -X POST http://localhost:8080/api/v1/products \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Headphones","description":"ANC","price":129.99,"stockQuantity":40}'
+
+# 3. Register + place an order as a customer
+curl -X POST http://localhost:8080/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","email":"alice@shop.dev","password":"secret123"}'
+
+curl -X POST http://localhost:8080/api/v1/orders \
+  -H "Authorization: Bearer <ALICE_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"items":[{"productId":1,"quantity":2}]}'
+```
+
+---
+
+## 4. Every annotation used in this project (interview-ready cheat sheet)
+
+### Bootstrapping
+| Annotation | Where | What it does |
+|---|---|---|
+| `@SpringBootApplication` | `EcommerceApplication` | Bundles `@Configuration` + `@EnableAutoConfiguration` + `@ComponentScan`. |
+| `@Configuration` | config classes | Marks a class that defines Spring beans. |
+| `@Bean` | methods in config | Registers the return value as a Spring-managed bean. |
+
+### Web / REST
+| Annotation | What it does |
+|---|---|
+| `@RestController` | `@Controller` + `@ResponseBody`; return values become JSON. |
+| `@RequestMapping` | Base URL path for a controller. |
+| `@GetMapping` / `@PostMapping` / `@PutMapping` / `@PatchMapping` / `@DeleteMapping` | Map HTTP verbs to methods. |
+| `@PathVariable` | Bind a URL path segment (`/products/{id}`) to a parameter. |
+| `@RequestBody` | Deserialize the JSON request body into an object. |
+| `@RequestParam` (via `Pageable`) | Bind query params (`?page=0&size=10&sort=name`). |
+
+### Validation
+| Annotation | What it does |
+|---|---|
+| `@Valid` | Triggers Bean Validation on a request body/parameter. |
+| `@NotBlank` / `@NotNull` / `@NotEmpty` | Presence checks. |
+| `@Size` / `@Min` / `@DecimalMin` / `@PositiveOrZero` | Range/length checks. |
+| `@Email` | Validates email format. |
+
+### Service / Data
+| Annotation | What it does |
+|---|---|
+| `@Service` | Marks a business-logic bean (a `@Component` stereotype). |
+| `@Transactional` | Wraps a method in a DB transaction (rollback on runtime exception). `readOnly=true` optimizes reads. |
+| `JpaRepository<T,ID>` | Gives CRUD + pagination for free; method names become queries. |
+
+### JPA / Hibernate (entities)
+| Annotation | What it does |
+|---|---|
+| `@Entity` | Marks a persistent class. |
+| `@Table(name=...)` | Maps to a specific table. |
+| `@Id` | Primary key. |
+| `@GeneratedValue(strategy = IDENTITY)` | DB auto-generates the key. |
+| `@Column` | Column mapping/constraints (`nullable`, `unique`, `length`, `precision`). |
+| `@Enumerated(EnumType.STRING)` | Store an enum as text, not an ordinal. |
+| `@ManyToOne` / `@OneToMany` | Relationships; `mappedBy`, `cascade`, `orphanRemoval`, `fetch`. |
+| `@JoinColumn` | Foreign-key column for a relationship. |
+
+### Security
+| Annotation | What it does |
+|---|---|
+| `@EnableWebSecurity` | Turns on Spring Security's web support. |
+| `@EnableMethodSecurity` | Enables method-level `@PreAuthorize`. |
+| `@PreAuthorize("hasRole('ADMIN')")` | Authorizes a method by role/expression before it runs. |
+
+### Exceptions
+| Annotation | What it does |
+|---|---|
+| `@RestControllerAdvice` | Global exception handling across all controllers. |
+| `@ExceptionHandler` | Handles a specific exception type and maps it to a status + body. |
+
+### Lombok (compile-time boilerplate)
+| Annotation | What it does |
+|---|---|
+| `@Getter` / `@Setter` | Generate getters/setters. |
+| `@NoArgsConstructor` / `@AllArgsConstructor` | Generate constructors. |
+| `@Builder` | Fluent builder pattern. |
+
+### Testing
+| Annotation | What it does |
+|---|---|
+| `@SpringBootTest` | Boots the full context for integration tests. |
+| `@AutoConfigureMockMvc` | Provides `MockMvc` to call endpoints without a real server. |
+| `@ExtendWith(MockitoExtension.class)` | Enables Mockito in a plain unit test. |
+| `@Mock` / `@InjectMocks` | Create mocks and inject them into the class under test. |
+| `@Test` | Marks a JUnit 5 test method. |
+
+---
+
+## 5. Key concepts demonstrated (talk about these in interviews)
+
+1. **Stateless JWT auth** — no server session; every request carries a signed token validated by `JwtAuthFilter`.
+2. **Layered architecture** with DTOs — entities are never exposed directly to clients.
+3. **Role-based authorization** — URL rules + `@PreAuthorize` method security.
+4. **Transaction management** — order placement decrements stock and computes totals atomically.
+5. **Global error handling** — one consistent JSON error shape for every failure.
+6. **Bean Validation** — declarative input validation at the API boundary.
+7. **Money as `BigDecimal`** — never `double` (avoids floating-point rounding).
+8. **Testing pyramid** — fast Mockito unit tests + full-stack `MockMvc` integration tests.
+
+---
+
+## 6. Production next steps (not done here — good to mention)
+
+- Replace H2 with **PostgreSQL** and manage schema with **Flyway/Liquibase** (drop `ddl-auto`).
+- Move the JWT secret to **environment variables / a secrets manager** (never commit it).
+- Add **refresh tokens** and token revocation.
+- Add a **dependency vulnerability scan** in CI (`mvn org.owasp:dependency-check-maven:check`).
+- Add **structured JSON logging** with a trace/correlation id.
+- Containerize with a **Dockerfile** + `docker-compose` (app + DB).
+#   E c o m m e r c e A P I  
+ 
