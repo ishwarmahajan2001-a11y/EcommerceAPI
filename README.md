@@ -6,6 +6,8 @@ Built to teach the core Spring Boot skills interviewers ask about.
 
 **Stack:** Java 21 · Spring Boot 3.3.5 · Spring Security · Spring Data JPA · H2 · JWT (jjwt) · springdoc OpenAPI · JUnit 5 + Mockito
 
+**Repo layout:** `backend/` — Spring Boot API · `frontend/` — React storefront + admin panel
+
 ---
 
 ## 1. How to run
@@ -13,6 +15,7 @@ Built to teach the core Spring Boot skills interviewers ask about.
 ```powershell
 # From the project root
 $env:JAVA_HOME = 'C:\Program Files\Eclipse_DEV\Jdks\jdk21'
+cd backend
 mvn spring-boot:run
 ```
 
@@ -23,6 +26,7 @@ mvn spring-boot:run
 ### Run the tests
 
 ```powershell
+cd backend
 mvn clean test
 ```
 
