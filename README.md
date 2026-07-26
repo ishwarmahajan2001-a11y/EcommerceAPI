@@ -33,6 +33,22 @@ mvn clean test
 | `admin`  | `admin123`| ADMIN |
 | `john`   | `john123` | USER  |
 
+### Frontend (React)
+
+A React storefront + admin panel lives in `frontend/` (Vite · React · Tailwind CSS · React Query · React Router). The dev server proxies `/api` to the backend, so no CORS config is needed.
+
+```powershell
+cd frontend
+npm install
+npm run dev      # http://localhost:5173  (backend must be running on :8080)
+npm test         # Vitest + React Testing Library (77 tests)
+npm run build    # production bundle in frontend/dist
+```
+
+Pages: catalog `/`, product detail, login/register, cart & checkout, my orders,
+and an ADMIN panel (`/admin/products`, `/admin/orders`). The JWT is kept in
+sessionStorage and attached by an Axios interceptor; a 401 auto-logs-out.
+
 ---
 
 ## 2. Architecture
@@ -241,5 +257,6 @@ curl -X POST http://localhost:8080/api/v1/orders \
 - Add a **dependency vulnerability scan** in CI (`mvn org.owasp:dependency-check-maven:check`).
 - Add **structured JSON logging** with a trace/correlation id.
 - Containerize with a **Dockerfile** + `docker-compose` (app + DB).
-#   E c o m m e r c e A P I  
+#   E c o m m e r c e A P I 
+ 
  
